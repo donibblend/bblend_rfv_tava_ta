@@ -1,0 +1,15 @@
+# Ambiente Virtual
+venv/
+*.pyc
+__pycache__/
+
+# Arquivo de ambiente (contém segredos)
+.env
+
+# Arquivos de IDE/Editor
+.vscode/
+.idea/
+
+# Arquivos de Sistema Operacional
+.DS_Store
+Thumbs.db
