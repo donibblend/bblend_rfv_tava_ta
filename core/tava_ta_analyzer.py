@@ -36,7 +36,7 @@ def get_customer_segments(df_all_transactions, analysis_date, model_type, focus_
     Returns:
         pd.DataFrame: Um DataFrame com cada cliente, seus scores RFV e sua categoria final.
     """
-    print(f"Iniciando análise RFV para {analysis_date.date()} com foco em '{focus_type}' e modelo '{model_type}'...")
+    print(f"Iniciando análise RFV para {analysis_date} com foco em '{focus_type}' e modelo '{model_type}'...")
 
     # 1. Define qual conjunto de regras usar (Antigo ou Novo)
     rules_set = RFV_RULES_NOVO if model_type == 'novo' else RFV_RULES_ANTIGO
