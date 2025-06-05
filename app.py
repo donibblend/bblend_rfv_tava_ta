@@ -1,35 +1,38 @@
+# Em app.py
+
 import streamlit as st
 import pandas as pd
-from core.data_loader import load_data_from_bq # Importa nossa função
+# 1. Mude o import para a nossa nova função principal
+from core.data_loader import carregar_dados
 
-# Configuração da página (opcional, mas bom para começar)
+# Configuração da página
 st.set_page_config(layout="wide", page_title="B.blend RFV Tava/Tá")
 
 # Título da Aplicação
 st.title("Análise RFV B.blend - Tava vs. Tá")
 
 # --- Carregamento de Dados ---
-# Usaremos st.cache_data para carregar os dados apenas uma vez e otimizar
-@st.cache_data # Cacheia o resultado da função
+# Usaremos st.cache_data para carregar os dados do CSV apenas uma vez e otimizar
+@st.cache_data
 def carregar_dados_completos():
-    # Por enquanto, vamos carregar uma amostra para agilizar o desenvolvimento.
-    # Remova ou aumente o 'limit' quando quiser processar todos os dados.
-    df = load_data_from_bq(limit=1000) # Carrega os primeiros 1000 registros
-    if df is not None:
-        # Converter 'data_compra' para datetime se ainda não estiver
-        if 'data_compra' in df.columns:
-            df['data_compra'] = pd.to_datetime(df['data_compra'], errors='coerce')
-        # Adicionar outras conversões de tipo necessárias aqui
+    """
+    Função para carregar os dados, agora usando a função principal do data_loader
+    que está configurada para ler do arquivo CSV local.
+    """
+    # 2. Agora chama nossa função principal que está configurada para CSV
+    df = carregar_dados()
     return df
 
+# Chama a função para carregar os dados
 df_base_completa = carregar_dados_completos()
 
+# Verifica se os dados foram carregados e mostra uma amostra
 if df_base_completa is not None:
-    st.success(f"Dados carregados com sucesso! {len(df_base_completa)} linhas iniciais processadas.")
+    st.success(f"Dados carregados com sucesso do arquivo CSV! {len(df_base_completa)} linhas processadas.")
     st.subheader("Amostra dos Dados Carregados:")
     st.dataframe(df_base_completa.head())
 else:
-    st.error("Falha ao carregar os dados do BigQuery. Verifique os logs no terminal.")
+    st.error("Falha ao carregar os dados do arquivo CSV. Verifique o terminal para erros.")
 
 # --- Barra Lateral para Inputs do Usuário ---
 st.sidebar.header("Filtros da Análise")
@@ -42,17 +45,14 @@ modelo_rfv_escolhido = st.sidebar.selectbox(
     ("Modelo Novo (Diamante, Ouro...)", "Modelo Antigo (Elite, Potencial Elite...)")
 )
 
-# Os tipos de RFV podem depender do modelo escolhido,
-# mas vamos simplificar por agora.
 tipo_rfv_foco = st.sidebar.selectbox(
     "Escolha o Tipo de RFV para Análise:",
     ("Geral", "Cápsulas", "Filtro (Novo Modelo)", "Cilindro (Novo Modelo)", "Insumos (Antigo Modelo)")
 )
 
 if st.sidebar.button("Processar Análise Tava/Tá"):
-    st.sidebar.write("Processando...") # Placeholder
+    st.sidebar.write("Processando...") # Placeholder para a lógica futura
     # Aqui virá a lógica para chamar as funções de cálculo RFV e análise Tava/Tá
-    # Ex: processar_analise_tava_ta(df_base_completa, data_tava, data_ta, modelo_rfv_escolhido, tipo_rfv_foco)
     st.subheader("Resultados da Análise (Placeholder)")
     st.write(f"Analisando de {data_tava} para {data_ta}")
     st.write(f"Modelo: {modelo_rfv_escolhido}, Foco: {tipo_rfv_foco}")

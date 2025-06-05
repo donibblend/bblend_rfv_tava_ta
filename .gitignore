@@ -13,3 +13,5 @@ __pycache__/
 # Arquivos de Sistema Operacional
 .DS_Store
 Thumbs.db
+
+amostra_rfv_24k.csv
