@@ -1,52 +1,32 @@
-# To learn more about how to use Nix to configure your environment
-# see: https://firebase.google.com/docs/studio/customize-workspace
 { pkgs, ... }: {
-  # Which nixpkgs channel to use.
-  channel = "stable-24.05"; # or "unstable"
-  # Use https://search.nixos.org/packages to find packages
+  channel = "stable-24.05";
+
   packages = [
-    pkgs.python311  # Isso fornecerá o Python 3.11.x que você usou
-    # pkgs.python311Packages.pip # Opcional: se quiser o pip do python311 disponível globalmente no Nix.
-                                 # Geralmente, o pip dentro do seu venv é suficiente.
-    pkgs.git          # É bom ter o Git explicitamente gerenciado pelo Nix
+    pkgs.python311
+    pkgs.git
   ];
-  # Sets environment variables in the workspace
-  env = {};
+
   idx = {
-    # Search for the extensions you want on https://open-vsx.org/ and use "publisher.id"
-    extensions = [
-      # "vscodevim.vim"
-    ];
-    # Enable previews
     previews = {
       enable = true;
       previews = {
-        # web = {
-        #   # Example: run "npm run dev" with PORT set to IDX's defined port for previews,
-        #   # and show it in IDX's web preview panel
-        #   command = ["npm" "run" "dev"];
-        #   manager = "web";
-        #   env = {
-        #     # Environment variables to set for your server
-        #     PORT = "$PORT";
-        #   };
-        # };
+        # Um preview de teste muito simples usando o servidor HTTP do Python
+        servidor_de_teste = {
+          command = [
+            "python3"
+            "-m"
+            "http.server" # Comando do Python para iniciar um servidor web simples
+            "$PORT"       # Usa a porta que o IDX fornecer
+          ];
+          manager = "web";
+        };
       };
     };
-    # Workspace lifecycle hooks
+
+    # Seções vazias para simplificar ao máximo
     workspace = {
-      # Runs when a workspace is first created
-      onCreate = {
-        # Example: install JS dependencies from NPM
-        # npm-install = "npm install";
-        # Open editors for the following files by default, if they exist:
-        default.openFiles = [ ".idx/dev.nix" "README.md" ];
-      };
-      # Runs when the workspace is (re)started
-      onStart = {
-        # Example: start a background task to watch and re-build backend code
-        # watch-backend = "npm run watch-backend";
-      };
+      onCreate = {};
+      onStart = {};
     };
   };
 }
