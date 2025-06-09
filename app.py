@@ -11,6 +11,7 @@ st.title("Análise de Migração RFV - Tava -> Tá")
 
 @st.cache_data
 def carregar_dados_completos():
+    # Esta função agora chama a versão do data_loader que conecta ao BigQuery
     df = carregar_dados()
     if df is not None:
         df.dropna(subset=['data_compra'], inplace=True)
@@ -19,7 +20,8 @@ def carregar_dados_completos():
 df_base_completa = carregar_dados_completos()
 
 if df_base_completa is None:
-    st.error("Falha ao carregar os dados do arquivo CSV.")
+    # --- AJUSTE FEITO AQUI ---
+    st.error("Falha ao carregar os dados do BigQuery. Verifique os logs no terminal e as permissões da conta de serviço.")
     st.stop()
 
 with st.sidebar:
@@ -52,11 +54,11 @@ if processar_btn:
             data_tava_dt = pd.to_datetime(data_tava)
             data_ta_dt = pd.to_datetime(data_ta)
 
+            # Lógica de cálculo RFV
             if tipo_rfv_foco == 'Geral':
                 componentes = opcoes_foco[1:]
                 
-                # --- MELHORIA AQUI: Loop mais claro e sequencial ---
-                log_area.info(f"FASE 1: Calculando categorias para a data 'Tava' ({data_tava.strftime('%d/%m/%Y')})")
+                log_area.info(f"FASE 1: Calculando categorias 'Geral' para a data 'Tava' ({data_tava.strftime('%d/%m/%Y')})")
                 tava_scores = []
                 for componente in componentes:
                     df_tava_comp = get_customer_segments(df_base_completa, data_tava, modelo_rfv_escolhido, componente, status_ui=log_container)
@@ -64,7 +66,7 @@ if processar_btn:
                         df_tava_comp.rename(columns={'Total_score': f'score_{componente}'}, inplace=True)
                         tava_scores.append(df_tava_comp[[f'score_{componente}']])
                 
-                log_area.info(f"FASE 2: Calculando categorias para a data 'Tá' ({data_ta.strftime('%d/%m/%Y')})")
+                log_area.info(f"FASE 2: Calculando categorias 'Geral' para a data 'Tá' ({data_ta.strftime('%d/%m/%Y')})")
                 ta_scores = []
                 for componente in componentes:
                     df_ta_comp = get_customer_segments(df_base_completa, data_ta, modelo_rfv_escolhido, componente, status_ui=log_container)
@@ -75,13 +77,10 @@ if processar_btn:
                 if not tava_scores or not ta_scores:
                     st.warning(f"Não foi possível calcular o RFV 'Geral' por falta de dados em um ou mais componentes.")
                     st.stop()
-
-                df_tava_geral = pd.concat(tava_scores, axis=1)
-                df_ta_geral = pd.concat(ta_scores, axis=1)
-                df_tava_geral['Total_score'] = df_tava_geral.mean(axis=1).round()
-                df_ta_geral['Total_score'] = df_ta_geral.mean(axis=1).round()
-                df_tava = df_tava_geral.reset_index()
-                df_ta = df_ta_geral.reset_index()
+                
+                df_tava_geral = pd.concat(tava_scores, axis=1); df_ta_geral = pd.concat(ta_scores, axis=1)
+                df_tava_geral['Total_score'] = df_tava_geral.mean(axis=1).round(); df_ta_geral['Total_score'] = df_ta_geral.mean(axis=1).round()
+                df_tava = df_tava_geral.reset_index(); df_ta = df_ta_geral.reset_index()
                 df_tava['categoria'] = df_tava['Total_score'].apply(lambda score: get_category(score, modelo_rfv_escolhido))
                 df_ta['categoria'] = df_ta['Total_score'].apply(lambda score: get_category(score, modelo_rfv_escolhido))
                 first_purchase = df_base_completa.groupby('cod_cliente')['data_compra'].min().rename('data_primeira_compra')
@@ -94,26 +93,11 @@ if processar_btn:
                 if df_tava.empty or df_ta.empty:
                     st.warning(f"Não foram encontradas transações suficientes para a análise de '{tipo_rfv_foco}'.")
                     st.stop()
-                df_tava.reset_index(inplace=True)
-                df_ta.reset_index(inplace=True)
+                df_tava.reset_index(inplace=True); df_ta.reset_index(inplace=True)
 
             log_container.success("Análise concluída! Gerando visualizações...")
-        
-        # O resto do código para exibir KPIs e tabelas continua o mesmo...
-        ativos_tava = df_base_completa[(df_base_completa['data_compra'] > data_tava_dt - pd.Timedelta(days=365)) & (df_base_completa['data_compra'] <= data_tava_dt)]['cod_cliente'].nunique()
-        ativos_ta = df_base_completa[(df_base_completa['data_compra'] > data_ta_dt - pd.Timedelta(days=365)) & (df_base_completa['data_compra'] <= data_ta_dt)]['cod_cliente'].nunique()
-        total_clientes_historico = df_base_completa['cod_cliente'].nunique()
-        churn_tava = total_clientes_historico - ativos_tava
-        churn_ta = total_clientes_historico - ativos_ta
 
-        st.subheader("Resumo da Base de Clientes")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(label=f"Clientes Ativos em {data_ta.strftime('%d/%m/%Y')} (Tá)", value=f"{ativos_ta:,.0f}".replace(",", "."), delta=f"{ativos_ta - ativos_tava:,.0f}".replace(",", "."))
-        with col2:
-            st.metric(label=f"Clientes em Churn em {data_ta.strftime('%d/%m/%Y')} (Tá)", value=f"{churn_ta:,.0f}".replace(",", "."), delta=f"{churn_ta - churn_ta:,.0f}".replace(",", "."))
-        st.markdown("---")
-        
+        # Lógica para exibir as tabelas
         df_merged = pd.merge(df_tava[['cod_cliente', 'categoria']], df_ta[['cod_cliente', 'categoria']], on='cod_cliente', how='outer', suffixes=('_tava', '_ta'))
         df_merged['categoria_tava'].fillna('ENTRANTE NA BASE', inplace=True); df_merged['categoria_ta'].fillna('CHURN', inplace=True)
         
