@@ -28,7 +28,7 @@ def get_data_for_snapshot(snapshot_date):
                 bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date.date()),
             ]
         )
-        df = client.query(query, job_config=job_config).to_dataframe()
+        df = client.query(query).to_dataframe()
         return df
     except Exception as e:
         print(f"ERRO ao buscar dados para o snapshot {snapshot_date.date()}: {e}")
@@ -41,10 +41,10 @@ def get_net_history_as_df(category_column_name):
     """
     try:
         client = bigquery.Client()
+        # Esta query é complexa, mas faz todo o trabalho pesado no BigQuery
         query = f"""
             WITH 
             base_com_status AS (
-              -- Primeiro, define o status de cada cliente em cada snapshot, excluindo 'NOVO CLIENTE'
               SELECT 
                 data_snapshot,
                 cod_cliente,
@@ -56,7 +56,6 @@ def get_net_history_as_df(category_column_name):
               WHERE {category_column_name} != 'NOVO CLIENTE'
             ),
             snapshots_mensais AS (
-              -- Encontra o último snapshot de cada mês para representar aquele mês
               SELECT 
                 DATE_TRUNC(data_snapshot, MONTH) as ano_mes,
                 MAX(data_snapshot) as ultimo_snapshot_do_mes
@@ -64,7 +63,6 @@ def get_net_history_as_df(category_column_name):
               GROUP BY 1
             ),
             contagem_status_mensal AS (
-              -- Conta Ativos e Churn para cada último snapshot do mês
               SELECT
                 m.ano_mes,
                 b.status,
@@ -73,7 +71,6 @@ def get_net_history_as_df(category_column_name):
               JOIN snapshots_mensais m ON b.data_snapshot = m.ultimo_snapshot_do_mes
               GROUP BY 1, 2
             )
-            -- Pivota a tabela para ter colunas de Ativo e Churn e calcula o NET
             SELECT
               ano_mes,
               IFNULL(Ativo, 0) as Ativo,
@@ -88,10 +85,9 @@ def get_net_history_as_df(category_column_name):
             ORDER BY ano_mes
         """
         df = client.query(query).to_dataframe()
-        # Define a data como índice para o gráfico
         df['ano_mes'] = pd.to_datetime(df['ano_mes'])
         df.set_index('ano_mes', inplace=True)
         return df
     except Exception as e:
         print(f"ERRO ao calcular histórico de NET: {e}")
-        return pd.DataFrame() # Retorna dataframe vazio em caso de erro
+        return pd.DataFrame()
