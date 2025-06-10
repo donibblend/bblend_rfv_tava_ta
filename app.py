@@ -1,18 +1,19 @@
 # Em app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
 
-from core.data_loader import get_available_snapshots, get_data_for_snapshot
+# --- MELHORIA AQUI: Importa todas as funções necessárias ---
+from core.data_loader import get_available_snapshots, get_data_for_snapshot, get_net_history_as_df
 
+# (O resto do arquivo continua exatamente o mesmo que a versão anterior)
 # --- Configuração da Página ---
 st.set_page_config(layout="wide", page_title="B.blend RFV Tava -> Tá")
 st.title("Análise de Migração RFV - B.blend")
 
 # --- Carregamento dos Filtros ---
-@st.cache_data(show_spinner="Carregando histórico de RFV do BigQuery...")
+@st.cache_data(show_spinner="Carregando datas de análise disponíveis...")
 def carregar_opcoes_snapshot():
     return get_available_snapshots()
 
@@ -74,7 +75,6 @@ with tab_matriz:
                 df_ta = get_data_for_snapshot(data_ta_selecionada)
 
                 if df_tava is not None and df_ta is not None:
-                    # Lógica para gerar a matriz
                     df_tava_segmento = df_tava[['cod_cliente', coluna_categoria_selecionada]].rename(columns={coluna_categoria_selecionada: 'categoria'})
                     df_ta_segmento = df_ta[['cod_cliente', coluna_categoria_selecionada]].rename(columns={coluna_categoria_selecionada: 'categoria'})
                     df_merged = pd.merge(df_tava_segmento, df_ta_segmento, on='cod_cliente', how='outer', suffixes=('_tava', '_ta'))
@@ -108,39 +108,25 @@ with tab_matriz:
 # --- Conteúdo da Aba 2: Histórico de NET ---
 with tab_net:
     st.header("Histórico Mensal de Indicadores da Base")
-    st.info(f"Os gráficos abaixo mostram a evolução de indicadores para a análise de '{tipo_rfv_foco_label}' do '{modelo_rfv_label}'. Clientes na categoria 'NOVO CLIENTE' são excluídos dos cálculos.")
+    st.info(f"O gráfico abaixo mostra a evolução de indicadores para a análise de '{tipo_rfv_foco_label}' do '{modelo_rfv_label}'. Clientes na categoria 'NOVO CLIENTE' são excluídos.")
     
     if st.button("Gerar Gráficos Históricos", key="btn_net"):
         with st.spinner("Buscando e agregando dados no BigQuery..."):
-            # A função get_net_history_as_df agora faz todo o trabalho pesado no BQ
             df_grafico = get_net_history_as_df(coluna_categoria_selecionada)
         
         if not df_grafico.empty:
-            # --- INÍCIO DA MUDANÇA: ADICIONANDO NOVO CÁLCULO E GRÁFICO ---
-
-            # Primeiro, calculamos a nova métrica (Taxa de Ativos)
             df_grafico['Total_Maduro'] = df_grafico['Ativo'] + df_grafico['Churn']
-            # Evita divisão por zero
-            df_grafico['NET_%_Taxa_Ativos'] = np.where(
-                df_grafico['Total_Maduro'] > 0,
-                (df_grafico['Ativo'] / df_grafico['Total_Maduro']) * 100,
-                0
-            )
+            df_grafico['NET_%_Taxa_Ativos'] = np.where(df_grafico['Total_Maduro'] > 0, (df_grafico['Ativo'] / df_grafico['Total_Maduro']) * 100, 0)
 
-            # Gráfico 1: NET (Ativo - Churn) - como já tínhamos
             st.subheader("Evolução Mensal do NET (Ativos - Churn)")
             st.line_chart(df_grafico, y='NET')
 
-            # Gráfico 2: Nova Métrica (Taxa de Ativos)
             st.subheader("Evolução Mensal da Taxa de Ativos (%)")
             st.line_chart(df_grafico, y='NET_%_Taxa_Ativos')
             
             with st.expander("Ver dados detalhados dos gráficos"):
-                # Formata a coluna de percentual para melhor visualização
                 df_grafico_display = df_grafico.copy()
                 df_grafico_display['NET_%_Taxa_Ativos'] = df_grafico_display['NET_%_Taxa_Ativos'].map('{:.2f}%'.format)
                 st.dataframe(df_grafico_display)
-            
-            # --- FIM DA MUDANÇA ---
         else:
             st.error("Não foi possível gerar os dados para os gráficos.")
