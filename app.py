@@ -1,13 +1,14 @@
 # Em app.py
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import altair as alt
 
-# --- MELHORIA AQUI: Importa todas as funções necessárias ---
+# Importa as funções do nosso data_loader otimizado
 from core.data_loader import get_available_snapshots, get_data_for_snapshot, get_net_history_as_df
 
-# (O resto do arquivo continua exatamente o mesmo que a versão anterior)
 # --- Configuração da Página ---
 st.set_page_config(layout="wide", page_title="B.blend RFV Tava -> Tá")
 st.title("Análise de Migração RFV - B.blend")
@@ -20,7 +21,7 @@ def carregar_opcoes_snapshot():
 opcoes_snapshot_disponiveis = carregar_opcoes_snapshot()
 
 if not opcoes_snapshot_disponiveis:
-    st.error("Nenhuma data de snapshot encontrada na tabela de resumo do BigQuery.")
+    st.error("Nenhuma data de snapshot encontrada na tabela de resumo do BigQuery. Verifique se o processo de backfill ou o agendamento rodaram com sucesso.")
     st.stop()
 
 # --- Barra Lateral (Sidebar) ---
@@ -47,7 +48,7 @@ with st.sidebar:
     coluna_categoria_selecionada = opcoes_foco_map[tipo_rfv_foco_label]
 
 # --- Criação das Abas ---
-tab_matriz, tab_net = st.tabs(["Matriz de Migração", "Histórico de NET"])
+tab_matriz, tab_net = st.tabs(["Matriz de Migração", "Histórico de Atividade"])
 
 # --- Conteúdo da Aba 1: Matriz de Migração ---
 with tab_matriz:
@@ -105,28 +106,43 @@ with tab_matriz:
         else:
             st.warning("Por favor, selecione um período 'Tava' válido para gerar a matriz.")
 
-# --- Conteúdo da Aba 2: Histórico de NET ---
+# --- Conteúdo da Aba 2: Histórico de Taxa de Ativos ---
 with tab_net:
-    st.header("Histórico Mensal de Indicadores da Base")
-    st.info(f"O gráfico abaixo mostra a evolução de indicadores para a análise de '{tipo_rfv_foco_label}' do '{modelo_rfv_label}'. Clientes na categoria 'NOVO CLIENTE' são excluídos.")
+    st.header("Histórico Mensal da Taxa de Ativos")
+    st.info(f"O gráfico abaixo mostra a evolução da Taxa de Ativos (%) para a análise de '{tipo_rfv_foco_label}' do '{modelo_rfv_label}'. A taxa representa `Ativos / (Ativos + Churn)`, excluindo 'Novos Clientes'.")
     
-    if st.button("Gerar Gráficos Históricos", key="btn_net"):
+    if st.button("Gerar Gráfico Histórico", key="btn_net"):
         with st.spinner("Buscando e agregando dados no BigQuery..."):
             df_grafico = get_net_history_as_df(coluna_categoria_selecionada)
         
         if not df_grafico.empty:
             df_grafico['Total_Maduro'] = df_grafico['Ativo'] + df_grafico['Churn']
-            df_grafico['NET_%_Taxa_Ativos'] = np.where(df_grafico['Total_Maduro'] > 0, (df_grafico['Ativo'] / df_grafico['Total_Maduro']) * 100, 0)
+            df_grafico['Taxa_de_Ativos'] = np.where(
+                df_grafico['Total_Maduro'] > 0,
+                (df_grafico['Ativo'] / df_grafico['Total_Maduro']) * 100,
+                0
+            )
+            df_para_grafico = df_grafico.reset_index().rename(columns={'ano_mes': 'Mês'})
 
-            st.subheader("Evolução Mensal do NET (Ativos - Churn)")
-            st.line_chart(df_grafico, y='NET')
+            base = alt.Chart(df_para_grafico).encode(
+                x=alt.X('Mês:T', title='Mês')
+            )
+            linha = base.mark_line(point=True, strokeWidth=3).encode(
+                y=alt.Y('Taxa_de_Ativos:Q', title='Taxa de Ativos (%)', scale=alt.Scale(zero=False))
+            )
+            rotulos = base.mark_text(
+                align='left', baseline='middle', dx=7, fontSize=12
+            ).encode(
+                text=alt.Text('Taxa_de_Ativos:Q', format='.1f'),
+                y=alt.Y('Taxa_de_Ativos:Q')
+            )
 
-            st.subheader("Evolução Mensal da Taxa de Ativos (%)")
-            st.line_chart(df_grafico, y='NET_%_Taxa_Ativos')
+            st.subheader(f"Evolução Mensal da Taxa de Ativos")
+            st.altair_chart(linha + rotulos, use_container_width=True)
             
-            with st.expander("Ver dados detalhados dos gráficos"):
+            with st.expander("Ver dados detalhados do gráfico"):
                 df_grafico_display = df_grafico.copy()
-                df_grafico_display['NET_%_Taxa_Ativos'] = df_grafico_display['NET_%_Taxa_Ativos'].map('{:.2f}%'.format)
+                df_grafico_display['Taxa_de_Ativos'] = df_grafico_display['Taxa_de_Ativos'].map('{:.2f}%'.format)
                 st.dataframe(df_grafico_display)
         else:
-            st.error("Não foi possível gerar os dados para os gráficos.")
+            st.error("Não foi possível gerar os dados para o gráfico.")
