@@ -1,4 +1,4 @@
-# Em app.py (VERSÃO DE DEPURAÇÃO)
+# Em app.py (VERSÃO FINAL DE PRODUÇÃO)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,24 +8,15 @@ import altair as alt
 from core.data_loader import get_available_snapshots, get_data_for_snapshot, get_net_history_as_df
 
 st.set_page_config(layout="wide", page_title="B.blend RFV Tava -> Tá")
-st.title("Análise de Migração RFV - B.blend (MODO DE DEPURAÇÃO)")
-
-st.warning("ESTA É A VERSÃO DE TESTE DE DEPURAÇÃO - v11")
+st.title("Análise de Migração RFV - B.blend")
 
 opcoes_snapshot_disponiveis = get_available_snapshots()
 
-# Verifica se o carregamento inicial de datas deu erro
-if isinstance(opcoes_snapshot_disponiveis, Exception):
-    st.error("Erro Crítico ao Carregar a Lista de Datas do BigQuery:")
-    st.exception(opcoes_snapshot_disponiveis)
-    st.stop()
-
 if not opcoes_snapshot_disponiveis:
-    st.error("Nenhuma data de snapshot encontrada.")
+    st.error("Erro Crítico: Não foi possível carregar as datas de análise do BigQuery.")
     st.stop()
 
 with st.sidebar:
-    # (A barra lateral continua a mesma)
     st.header("Filtros da Análise")
     st.caption(f"Dados atualizados pela última vez em: {opcoes_snapshot_disponiveis[0].strftime('%d/%m/%Y')}")
     opcoes_label_map = { f"Semana {dt.isocalendar().week:02d} ({dt.strftime('%d/%m/%Y')})": dt for dt in opcoes_snapshot_disponiveis }
@@ -60,39 +51,65 @@ with tab_matriz:
 
     if st.button("Processar Análise de Migração", key="btn_matriz"):
         if data_tava_selecionada:
-            with st.spinner("Buscando dados..."):
+            with st.spinner("Buscando dados e gerando matriz..."):
                 df_tava = get_data_for_snapshot(data_tava_selecionada)
                 df_ta = get_data_for_snapshot(data_ta_selecionada)
             
-            # --- NOVA VERIFICAÇÃO DE ERRO ---
-            is_error = False
-            if isinstance(df_tava, Exception):
-                st.error("Erro ao buscar dados 'Tava':")
-                st.exception(df_tava)
-                is_error = True
-            if isinstance(df_ta, Exception):
-                st.error("Erro ao buscar dados 'Tá':")
-                st.exception(df_ta)
-                is_error = True
-
-            if not is_error:
+            if df_tava is not None and df_ta is not None:
                 # Se não houve erro, continua com a lógica normal
-                with st.spinner("Gerando matriz de migração..."):
-                    # (A lógica de gerar a matriz continua a mesma)
-                    st.success("Lógica da matriz executada (código omitido para brevidade)")
+                df_tava_segmento = df_tava[['cod_cliente', coluna_categoria_selecionada]].rename(columns={coluna_categoria_selecionada: 'categoria'})
+                df_ta_segmento = df_ta[['cod_cliente', coluna_categoria_selecionada]].rename(columns={coluna_categoria_selecionada: 'categoria'})
+                df_merged = pd.merge(df_tava_segmento, df_ta_segmento, on='cod_cliente', how='outer', suffixes=('_tava', '_ta'))
+                df_merged['categoria_tava'].fillna('ENTRANTE NA BASE', inplace=True); df_merged['categoria_ta'].fillna('CHURN', inplace=True)
+                
+                if modelo_rfv_label == 'Modelo Novo':
+                    ORDER_Y = ['DIAMANTE', 'OURO', 'PRATA', 'BRONZE', 'NOVO CLIENTE', 'CHURN', 'ENTRANTE NA BASE']
+                    ORDER_X = ['CHURN', 'NOVO CLIENTE', 'BRONZE', 'PRATA', 'OURO', 'DIAMANTE']
+                else:
+                    ORDER_Y = ['ELITE', 'POTENCIAL ELITE', 'CLIENTE LEAL', 'PROMISSOR', 'PEGANDO NO SONO', 'EM RISCO', 'ADORMECIDO', 'NOVO CLIENTE', 'CHURN', 'ENTRANTE NA BASE']
+                    ORDER_X = ['CHURN', 'NOVO CLIENTE', 'ADORMECIDO', 'EM RISCO', 'PEGANDO NO SONO', 'PROMISSOR', 'CLIENTE LEAL', 'POTENCIAL ELITE', 'ELITE']
+                
+                st.markdown(f"##### Análise comparando **{data_tava_selecionada.strftime('%d/%m/%Y')} (Tava)** com **{data_ta_selecionada.strftime('%d/%m/%Y')} (Tá)**.")
+                tabela_base = pd.crosstab(df_merged['categoria_tava'], df_merged['categoria_ta'])
+                present_y = tabela_base.index.tolist(); present_x = tabela_base.columns.tolist()
+                final_order_y = [cat for cat in ORDER_Y if cat in present_y] + sorted([cat for cat in present_y if cat not in ORDER_Y])
+                final_order_x = [cat for cat in ORDER_X if cat in present_x] + sorted([cat for cat in present_x if cat not in ORDER_X])
+                tabela_reordenada = tabela_base.reindex(index=final_order_y, columns=final_order_x, fill_value=0)
+                tabela_absoluta = tabela_reordenada.copy()
+                tabela_absoluta.loc['Total',:] = tabela_absoluta.sum(axis=0).astype(int)
+                tabela_absoluta['Total'] = tabela_absoluta.sum(axis=1).astype(int)
+                tabela_percentual = tabela_reordenada.div(tabela_reordenada.sum(axis=1), axis=0).fillna(0) * 100
+                
+                st.subheader("Visão em Números Absolutos"); st.dataframe(tabela_absoluta.style.format(lambda x: f"{x:,.0f}".replace(",", ".")).background_gradient(cmap='viridis_r'))
+                st.subheader("Visão em Percentual (%)"); st.dataframe(tabela_percentual.style.format('{:.2f}%').background_gradient(cmap='viridis_r'))
+            else:
+                st.error("Não foi possível buscar os dados para uma ou ambas as datas selecionadas. Verifique os logs do Cloud Run para mais detalhes.")
+        else:
+            st.warning("Por favor, selecione um período 'Tava' válido para gerar a matriz.")
 
 with tab_net:
     st.header("Histórico Mensal da Taxa de Ativos")
-    st.info(f"O gráfico abaixo mostra a evolução da Taxa de Ativos (%) para a análise de '{tipo_rfv_foco_label}'.")
+    st.info(f"O gráfico abaixo mostra a evolução da Taxa de Ativos (%) para a análise de '{tipo_rfv_foco_label}' do '{modelo_rfv_label}'.")
     
     if st.button("Gerar Gráfico Histórico", key="btn_net"):
         with st.spinner("Buscando e agregando dados no BigQuery..."):
             df_grafico = get_net_history_as_df(coluna_categoria_selecionada)
         
-        # --- NOVA VERIFICAÇÃO DE ERRO ---
-        if isinstance(df_grafico, Exception):
-            st.error("Erro ao gerar dados do gráfico:")
-            st.exception(df_grafico)
-        elif not df_grafico.empty:
-            # Se não houve erro, continua
-            st.success("Lógica do gráfico executada (código omitido para brevidade)")
+        if df_grafico is not None and not df_grafico.empty:
+            df_grafico['Total_Maduro'] = df_grafico['Ativo'] + df_grafico['Churn']
+            df_grafico['Taxa_de_Ativos'] = np.where(df_grafico['Total_Maduro'] > 0, (df_grafico['Ativo'] / df_grafico['Total_Maduro']) * 100, 0)
+            df_para_grafico = df_grafico.reset_index().rename(columns={'ano_mes': 'Mês'})
+            
+            base = alt.Chart(df_para_grafico).encode(x=alt.X('Mês:T', title='Mês'))
+            linha = base.mark_line(point=True, strokeWidth=3).encode(y=alt.Y('Taxa_de_Ativos:Q', title='Taxa de Ativos (%)', scale=alt.Scale(zero=False)))
+            rotulos = base.mark_text(align='left', baseline='middle', dx=7, fontSize=12).encode(text=alt.Text('Taxa_de_Ativos:Q', format='.1f'), y=alt.Y('Taxa_de_Ativos:Q'))
+            
+            st.subheader(f"Evolução Mensal da Taxa de Ativos")
+            st.altair_chart(linha + rotulos, use_container_width=True)
+            
+            with st.expander("Ver dados detalhados do gráfico"):
+                df_grafico_display = df_grafico.copy()
+                df_grafico_display['Taxa_de_Ativos'] = df_grafico_display['Taxa_de_Ativos'].map('{:.2f}%'.format)
+                st.dataframe(df_grafico_display)
+        else:
+            st.error("Não foi possível gerar os dados para o gráfico. Verifique os logs do Cloud Run para mais detalhes.")

@@ -1,4 +1,4 @@
-# Em core/data_loader.py (VERSÃO DE DEPURAÇÃO)
+# Em core/data_loader.py (VERSÃO FINAL DE PRODUÇÃO)
 import pandas as pd
 from google.cloud import bigquery
 
@@ -12,22 +12,20 @@ def get_available_snapshots():
         return pd.to_datetime(df['data_snapshot']).tolist()
     except Exception as e:
         print(f"ERRO em get_available_snapshots: {e}")
-        return e # Retorna a exceção
+        return []
 
 def get_data_for_snapshot(snapshot_date):
     try:
         client = bigquery.Client()
         query = f"SELECT * FROM `{TABELA_RESUMO_ID}` WHERE data_snapshot = @snapshot_date"
         job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date.date()),
-            ]
+            query_parameters=[ bigquery.ScalarQueryParameter("snapshot_date", "DATE", snapshot_date.date()) ]
         )
         df = client.query(query, job_config=job_config).to_dataframe()
         return df
     except Exception as e:
-        print(f"ERRO em get_data_for_snapshot: {e}")
-        return e # Retorna a exceção
+        print(f"ERRO em get_data_for_snapshot para a data {snapshot_date.date()}: {e}")
+        return None
 
 def get_net_history_as_df(category_column_name):
     try:
@@ -62,4 +60,4 @@ def get_net_history_as_df(category_column_name):
         return df
     except Exception as e:
         print(f"ERRO ao calcular histórico de NET: {e}")
-        return e # Retorna a exceção
+        return pd.DataFrame()
