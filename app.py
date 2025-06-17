@@ -1,12 +1,11 @@
 # Em app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import altair as alt
 
-# Importa as funções do nosso data_loader otimizado
+# Importa as funções do nosso data_loader final
 from core.data_loader import get_available_snapshots, get_data_for_snapshot, get_net_history_as_df
 
 # --- Configuração da Página ---
@@ -21,7 +20,7 @@ def carregar_opcoes_snapshot():
 opcoes_snapshot_disponiveis = carregar_opcoes_snapshot()
 
 if not opcoes_snapshot_disponiveis:
-    st.error("Nenhuma data de snapshot encontrada na tabela de resumo do BigQuery. Verifique se o processo de backfill ou o agendamento rodaram com sucesso.")
+    st.error("Nenhuma data de snapshot encontrada na tabela de resumo do BigQuery. Verifique se a automação já rodou.")
     st.stop()
 
 # --- Barra Lateral (Sidebar) ---
@@ -75,7 +74,9 @@ with tab_matriz:
                 df_tava = get_data_for_snapshot(data_tava_selecionada)
                 df_ta = get_data_for_snapshot(data_ta_selecionada)
 
+                # Tratamento de erro final e limpo
                 if df_tava is not None and df_ta is not None:
+                    # Lógica para gerar a matriz
                     df_tava_segmento = df_tava[['cod_cliente', coluna_categoria_selecionada]].rename(columns={coluna_categoria_selecionada: 'categoria'})
                     df_ta_segmento = df_ta[['cod_cliente', coluna_categoria_selecionada]].rename(columns={coluna_categoria_selecionada: 'categoria'})
                     df_merged = pd.merge(df_tava_segmento, df_ta_segmento, on='cod_cliente', how='outer', suffixes=('_tava', '_ta'))
@@ -102,20 +103,21 @@ with tab_matriz:
                     st.subheader("Visão em Números Absolutos"); st.dataframe(tabela_absoluta.style.format(lambda x: f"{x:,.0f}".replace(",", ".")).background_gradient(cmap='viridis_r'))
                     st.subheader("Visão em Percentual (%)"); st.dataframe(tabela_percentual.style.format('{:.2f}%').background_gradient(cmap='viridis_r'))
                 else:
-                    st.error("Não foi possível buscar os dados para uma ou ambas as datas selecionadas.")
+                    st.error("Não foi possível buscar os dados para uma ou ambas as datas selecionadas. Verifique os logs do Cloud Run para mais detalhes.")
         else:
             st.warning("Por favor, selecione um período 'Tava' válido para gerar a matriz.")
 
 # --- Conteúdo da Aba 2: Histórico de Taxa de Ativos ---
 with tab_net:
     st.header("Histórico Mensal da Taxa de Ativos")
-    st.info(f"O gráfico abaixo mostra a evolução da Taxa de Ativos (%) para a análise de '{tipo_rfv_foco_label}' do '{modelo_rfv_label}'. A taxa representa `Ativos / (Ativos + Churn)`, excluindo 'Novos Clientes'.")
+    st.info(f"O gráfico abaixo mostra a evolução da Taxa de Ativos (%) para a análise de '{tipo_rfv_foco_label}' do '{modelo_rfv_label}'. Clientes na categoria 'NOVO CLIENTE' são excluídos deste cálculo.")
     
     if st.button("Gerar Gráfico Histórico", key="btn_net"):
         with st.spinner("Buscando e agregando dados no BigQuery..."):
             df_grafico = get_net_history_as_df(coluna_categoria_selecionada)
         
-        if not df_grafico.empty:
+        # Tratamento de erro final e limpo
+        if df_grafico is not None and not df_grafico.empty:
             df_grafico['Total_Maduro'] = df_grafico['Ativo'] + df_grafico['Churn']
             df_grafico['Taxa_de_Ativos'] = np.where(
                 df_grafico['Total_Maduro'] > 0,
@@ -123,20 +125,10 @@ with tab_net:
                 0
             )
             df_para_grafico = df_grafico.reset_index().rename(columns={'ano_mes': 'Mês'})
-
-            base = alt.Chart(df_para_grafico).encode(
-                x=alt.X('Mês:T', title='Mês')
-            )
-            linha = base.mark_line(point=True, strokeWidth=3).encode(
-                y=alt.Y('Taxa_de_Ativos:Q', title='Taxa de Ativos (%)', scale=alt.Scale(zero=False))
-            )
-            rotulos = base.mark_text(
-                align='left', baseline='middle', dx=7, fontSize=12
-            ).encode(
-                text=alt.Text('Taxa_de_Ativos:Q', format='.1f'),
-                y=alt.Y('Taxa_de_Ativos:Q')
-            )
-
+            base = alt.Chart(df_para_grafico).encode(x=alt.X('Mês:T', title='Mês'))
+            linha = base.mark_line(point=True, strokeWidth=3).encode(y=alt.Y('Taxa_de_Ativos:Q', title='Taxa de Ativos (%)', scale=alt.Scale(zero=False)))
+            rotulos = base.mark_text(align='left', baseline='middle', dx=7, fontSize=12).encode(text=alt.Text('Taxa_de_Ativos:Q', format='.1f'), y=alt.Y('Taxa_de_Ativos:Q'))
+            
             st.subheader(f"Evolução Mensal da Taxa de Ativos")
             st.altair_chart(linha + rotulos, use_container_width=True)
             
@@ -145,4 +137,4 @@ with tab_net:
                 df_grafico_display['Taxa_de_Ativos'] = df_grafico_display['Taxa_de_Ativos'].map('{:.2f}%'.format)
                 st.dataframe(df_grafico_display)
         else:
-            st.error("Não foi possível gerar os dados para o gráfico.")
+            st.error("Não foi possível gerar os dados para o gráfico. Verifique os logs do Cloud Run para mais detalhes.")
