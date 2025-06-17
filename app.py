@@ -10,6 +10,8 @@ from core.data_loader import get_available_snapshots, get_data_for_snapshot, get
 st.set_page_config(layout="wide", page_title="B.blend RFV Tava -> Tá")
 st.title("Análise de Migração RFV - B.blend (MODO DE DEPURAÇÃO)")
 
+st.warning("ESTA É A VERSÃO DE TESTE DE DEPURAÇÃO - v11")
+
 opcoes_snapshot_disponiveis = get_available_snapshots()
 
 # Verifica se o carregamento inicial de datas deu erro
